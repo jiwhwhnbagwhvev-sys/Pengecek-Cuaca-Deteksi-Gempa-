@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Pengecek Cuaca & Deteksi Gempa — Demo (Final)</title>
+<style>
+  :root{
+    --bg:#0b1220;
+    --card:#0f1724;
+    --accent:#60a5fa;
+    --text:#e6eef8;
+    --muted:#a8b3c7;
+    --danger:#ff6b6b;
+    --road:#2d2d2d;
+    --grass:#2e8b57;
+    --house:#f2e7d5;
+  }
+  /* Prevent scrolling on mobile */
+  html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; overflow:hidden; background:var(--bg); color:var(--text); -webkit-touch-callout:none; -webkit-user-select:none; -ms-user-select:none; user-select:none;}
+  .app{
+    width:min(980px,98vw); margin:12px auto; background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01)); border-radius:14px; padding:16px; box-shadow:0 8px 30px rgba(2,6,23,0.6);
+    max-height:calc(100vh - 24px); overflow:auto; /* allow internal scrolling of app if content overflows */
+    -webkit-overflow-scrolling:touch;
+  }
+  header{display:flex; align-items:center; gap:12px;}
+  header h1{margin:0;font-size:1.1rem;}
+  header p{margin:0;font-size:0.86rem;color:var(--muted);}
+  .controls{margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+  .btn{background:transparent;border:1px solid rgba(255,255,255,0.08); padding:8px 12px;border-radius:8px;color:var(--text); cursor:pointer;}
+  .danger{border-color:rgba(255,107,107,0.9); color:var(--danger);}
+  .status{margin-top:10px; padding:12px; border-radius:10px; background:rgba(0,0,0,0.12); display:flex; justify-content:space-between; align-items:center; gap:12px;}
+  .left{max-width:68%;}
+  .big{font-size:1rem; font-weight:600;}
+  .muted{color:var(--muted); font-size:0.86rem;}
+  .visual{
+    position:relative; margin-top:12px; height:420px; border-radius:10px; overflow:hidden; background:linear-gradient(180deg,#87ceeb 0%, #67b7ff 60%, #29507a 100%); 
+    box-shadow: inset 0 -40px 80px rgba(0,0,0,0.25);
+    transition: transform 0.15s ease-out;
+  }
+
+  /* Scene: grass/road/houses */
+  .scene { position:absolute; left:0; right:0; bottom:0; height:220px; z-index:6; pointer-events:none; display:flex; align-items:flex-end; justify-content:center; gap:18px; padding-bottom:12px; }
+  .grass-strip{ position:absolute; left:0; right:0; bottom:90px; height:70px; background:linear-gradient(90deg,#2e8b57,#2bb673); z-index:5; opacity:0.98; }
+  .street { position:absolute; left:0; right:0; bottom:52px; height:80px; background:linear-gradient(#333,#222); z-index:7; display:flex; align-items:center; justify-content:center; }
+  .street::before{ content:""; position:absolute; left:10%; right:10%; height:6px; top:50%; background:linear-gradient(90deg,#ffd,#ffd); opacity:0.18; border-radius:3px; }
+
+  .house { width:110px; height:80px; background:var(--house); border-radius:6px; box-shadow:0 6px 14px rgba(0,0,0,0.25); position:relative; z-index:8; }
+  .roof { width:100%; height:26px; background:#b34747; border-top-left-radius:6px; border-top-right-radius:6px; position:absolute; top:-26px; left:0; transform:skewX(-8deg); }
+  .house .door { width:20px; height:34px; background:#6b4b3e; position:absolute; left:50%; transform:translateX(-50%); bottom:10px; border-radius:3px; }
+
+  /* Rabbit (kelinci) jumping */
+  .rabbit {
+    width:110px; height:100px; position:relative; z-index:10; left:20%;
+  }
+  .rabbit .body{ width:66px; height:44px; background:#ffd9c7; border-radius:18px; position:absolute; left:22px; bottom:18px; box-shadow:inset -6px -6px 10px rgba(0,0,0,0.06);}
+  .rabbit .head{ width:44px; height:44px; background:#ffd9c7; border-radius:50%; position:absolute; left:0; top:0; box-shadow:inset -6px -6px 8px rgba(0,0,0,0.06); }
+  .rabbit .ear{ width:10px; height:36px; background:#ffd9c7; border-radius:8px; position:absolute; left:6px; top:-18px; transform:rotate(-12deg); }
+  .rabbit .ear.r{ left:26px; transform:rotate(8deg); }
+  .rabbit .eye{ width:6px; height:6px; background:#2b2b2b; border-radius:50%; position:absolute; left:12px; top:16px; }
+  .rabbit .eye.r{ left:26px; }
+  .rabbit .tail{ width:12px; height:12px; background:#fff; border-radius:50%; position:absolute; right:-6px; bottom:18px; box-shadow:inset -2px -2px 3px rgba(0,0,0,0.06); }
+
+  /* rabbit jump animation */
+  .rabbit.jumping { animation:rabbit-jump 1.6s ease-in-out infinite; transform-origin:center bottom; }
+  @keyframes rabbit-jump{
+    0%{ transform: translateY(0) }
+    20%{ transform: translateY(-10px) }
+    40%{ transform: translateY(0) }
+    60%{ transform: translateY(-6px) }
+    80%{ transform: translateY(0) }
+    100%{ transform: translateY(0) }
+  }
+
+  /* rabbit umbrella (hidden by default) */
+  .rabbit .umbrella { display:none; position:absolute; left:10px; top:-34px; transform-origin:left bottom; }
+  .rabbit.with-umbrella .umbrella { display:block; animation:umbrella-bob 0.6s ease-in-out infinite; }
+  @keyframes umbrella-bob{0%{transform:rotate(-6deg)}50%{transform:rotate(2deg)}100%{transform:rotate(-6deg)}}
+  .rabbit .umbrella .stick{ width:3px; height:48px; background:#5b3a2e; position:absolute; left:8px; top:0; border-radius:3px; }
+  .rabbit .umbrella .canopy{ width:96px; height:44px; background:linear-gradient(180deg,#ff5f6d,#ff9472); border-bottom-left-radius:52px; border-bottom-right-radius:52px; position:absolute; left:-36px; top:-34px; box-shadow:inset 0 -8px 12px rgba(0,0,0,0.08); }
+
+  /* Cat (kept as well) - static unless shaking */
+  .cat{ width:120px; height:80px; position:relative; transform-origin:center bottom; z-index:10; left:6%; }
+  .cat .body{ width:78px; height:48px; background:#ffcc99; border-radius:20px; position:absolute; left:22px; bottom:10px; box-shadow:inset -6px -6px 10px rgba(0,0,0,0.06);}
+  .cat .head{ width:48px; height:44px; background:#ffcc99; border-radius:40px; position:absolute; left:0; top:0; box-shadow:inset -6px -6px 8px rgba(0,0,0,0.06);}
+  .cat .ear{ width:0; height:0; border-left:8px solid transparent; border-right:8px solid transparent; border-bottom:12px solid #ffcc99; position:absolute; left:6px; top:-6px; }
+  .cat .ear.r{ left:34px; }
+  .cat .eye{ width:6px; height:6px; background:#2b2b2b; border-radius:50%; position:absolute; left:12px; top:16px; }
+  .cat .eye.r{ left:28px; }
+  .cat .tail{ width:10px; height:46px; background:#ffcc99; position:absolute; right:-6px; bottom:8px; border-radius:10px; transform-origin:top right; animation:tail 0.6s ease-in-out infinite; }
+  @keyframes tail{0%{transform:rotate(0);}50%{transform:rotate(22deg);}100%{transform:rotate(0);} }
+
+  .cat .umbrella { display:none; position:absolute; left:56px; top:-26px; transform-origin:left bottom; }
+  .cat.with-umbrella .umbrella { display:block; animation:umbrella-bob 0.6s ease-in-out infinite; }
+
+  /* rain elements */
+  .rain-canvas{position:absolute; inset:0; pointer-events:none; z-index:12; overflow:hidden;}
+  .drop{ position:absolute; top:-10vh; width:2px; height:18vh; opacity:0.6; transform:translateY(-100vh); animation:fall linear infinite; filter:drop-shadow(0 2px 2px rgba(0,0,0,0.2)); }
+  @keyframes fall{ to{ transform: translateY(120vh); } }
+
+  /* notif + overlay */
+  .notif{position:absolute; right:12px; top:12px; background:rgba(0,0,0,0.45); padding:10px 12px; border-radius:10px; z-index:22; display:flex; gap:10px; align-items:center;}
+  .badge{width:10px;height:10px;border-radius:50%; background:var(--accent); box-shadow:0 0 8px rgba(96,165,250,0.6);}
+
+  .quake-overlay{ position:absolute; inset:0; z-index:40; display:flex; align-items:center; justify-content:center; background:linear-gradient(180deg, rgba(0,0,0,0.45), rgba(0,0,0,0.75)); color:#fff; text-align:center; padding:20px; gap:12px; flex-direction:column; opacity:0; pointer-events:none; transition:opacity .18s ease; }
+  .quake-overlay.show{ opacity:1; pointer-events:auto; }
+  .warn-title{ font-size:1.4rem; font-weight:700; color:#ffdd57; }
+  .warn-msg{ font-size:1rem; color:#fff; }
+  .warn-actions{ display:flex; gap:8px; margin-top:6px; }
+
+  footer{ margin-top:12px; color:var(--muted); font-size:0.82rem; text-align:center; padding-bottom:8px; }
+
+  /* visual quake */
+  .visual.shake{ animation:quake 0.15s linear infinite; }
+  @keyframes quake{ 0%{transform: translateX(0) rotate(0);} 25%{transform: translateX(-6px) rotate(-1deg);} 50%{transform: translateX(6px) rotate(1deg);} 75%{transform: translateX(-4px) rotate(-0.8deg);} 100%{transform: translateX(0) rotate(0);} }
+
+  @media (max-width:520px){
+    .visual{height:360px;}
+    .rabbit{ width:88px; transform:scale(0.9); left:10%; }
+    .cat{ width:110px; transform:scale(0.9); left:4%; }
+    .house{ width:88px; height:68px; }
+  }
+</style>
+</head>
+<body>
+  <div class="app" role="application" aria-label="Demo pengecek cuaca dan animasi">
+    <header>
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path d="M3 12a9 9 0 1018 0A9 9 0 003 12z" fill="#60a5fa" opacity="0.12"/>
+        <path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M1 12h4M19 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" stroke="#60a5fa" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <h1>Pengecek Cuaca & Deteksi Gempa</h1>
+        <p class="muted">Izinkan lokasi — sistem akan mendeteksi cuaca & menampilkan animasi. Aktifkan notifikasi untuk peringatan.</p>
+      </div>
+    </header>
+
+    <div class="controls">
+      <button class="btn" id="btnCheck">Cek Cuaca Sekarang</button>
+      <button class="btn" id="btnNotif">Izinkan Notifikasi</button>
+      <button class="btn danger" id="btnSimulate">Simulasikan Gempa</button>
+      <div style="flex:1"></div>
+      <div class="muted">Sumber data: <strong>Open-Meteo</strong> (tanpa API key) + <strong>BMKG</strong></div>
+    </div>
+
+    <div class="status" id="statusCard" aria-live="polite">
+      <div class="left">
+        <div class="big" id="mainStatus">Menunggu izin lokasi...</div>
+        <div class="muted" id="subStatus">Klik "Cek Cuaca Sekarang" — browser akan meminta akses lokasi.</div>
+        <div class="rain-times" id="rainTimes" aria-live="polite"></div>
+      </div>
+      <div style="text-align:right">
+        <div id="tempBadge" class="big" style="font-size:1.0rem"></div>
+        <div class="muted" id="placeLabel"></div>
+      </div>
+    </div>
+
+    <div class="visual" id="visual" aria-live="polite">
+      <!-- rain -->
+      <div class="rain-canvas" id="rainCanvas" aria-hidden="true"></div>
+
+      <!-- sky element -->
+      <div class="sky-obj" id="skyObj"></div>
+
+      <!-- scene: houses, grass, road -->
+      <div class="scene" aria-hidden="true">
+        <div class="house" style="transform:scale(0.95) translateY(10px);"><div class="roof"></div><div class="door"></div></div>
+        <div class="house" style="transform:scale(1.0) translateY(0);"><div class="roof"></div><div class="door"></div></div>
+        <div class="house" style="transform:scale(0.88) translateY(18px);"><div class="roof"></div><div class="door"></div></div>
+      </div>
+      <div class="grass-strip" aria-hidden="true"></div>
+      <div class="street" aria-hidden="true"></div>
+
+      <!-- ground: rabbit + cat (rabbit jumps by default) -->
+      <div style="position:absolute; left:0; right:0; bottom:12px; height:140px; z-index:10; pointer-events:none;">
+        <div style="position:absolute; left:10%; bottom:0;">
+          <div class="rabbit jumping" id="rabbit" role="img" aria-label="Kelinci lompat">
+            <div class="umbrella">
+              <div class="stick"></div>
+              <div class="canopy"></div>
+            </div>
+            <div class="head"><div class="ear"></div><div class="ear r"></div><div class="eye"></div><div class="eye r"></div></div>
+            <div class="body"></div>
+            <div class="tail"></div>
+          </div>
+        </div>
+
+        <div style="position:absolute; left:62%; bottom:0;">
+          <div class="cat" id="cat" role="img" aria-label="Kucing">
+            <div class="head"><div class="ear"></div><div class="ear r"></div><div class="eye"></div><div class="eye r"></div></div>
+            <div class="body"></div>
+            <div class="tail"></div>
+            <div class="umbrella">
+              <div class="stick"></div>
+              <div class="canopy"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- notif -->
+      <div class="notif" id="notifBox" style="display:none">
+        <div class="badge" id="badgeDot"></div>
+        <div>
+          <div style="font-weight:600" id="notifTitle">Hujan</div>
+          <div class="muted small" id="notifMsg">Bawa payung ya!</div>
+        </div>
+      </div>
+
+      <!-- quake overlay -->
+      <div class="quake-overlay" id="quakeOverlay" role="alert" aria-hidden="true">
+        <div class="warn-title" id="quakeTitle">⚠️ PERINGATAN GEMPA</div>
+        <div class="warn-msg" id="quakeMsg">Gempa terdeteksi — segera berlindung.</div>
+        <div class="warn-actions">
+          <button class="btn" id="btnVibrateTry">Coba Getar</button>
+          <button class="btn" id="btnCloseWarn">Tutup</button>
+        </div>
+        <div style="font-size:0.82rem; color:#ffd; margin-top:6px;">Jika ponselmu mendukung, izinkan getaran/aktifkan pengaturan sistem untuk merasakan getaran.</div>
+      </div>
+    </div>
+
+    <footer><div>Tip:  Klik "Cek Cuaca dan cek gempa Sekarang" untuk mengizinkan audio/notifikasi supaya berjalan.</div></footer>
+  </div>
+
+  <!-- modal lokasi -->
+  <div class="modal" id="modal" style="display:none">
+    <div class="card">
+      <h3>Izin Lokasi Ditolak</h3>
+      <p class="small">Aplikasi ini memerlukan akses lokasi agar dapat memeriksa cuaca untuk posisimu. Silakan aktifkan izin lokasi di pengaturan browser/perangkat, lalu tekan "Cek Cuaca Sekarang" lagi.</p>
+      <p class="small">Cara singkat: Pengaturan -> Situs -> Lokasi -> izinkan untuk domain ini.</p>
+      <div style="margin-top:12px; text-align:right;">
+        <button class="btn" id="closeModal">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- audio files -->
+  <audio id="rainSound" loop>
+    <source src="https://cdn.pixabay.com/download/audio/2021/09/23/audio_285c3f6e72.mp3?filename=light-rain-ambient-113285.mp3" type="audio/mpeg">
+  </audio>
+  <audio id="quakeSound">
+    <source src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_70eafef9f5.mp3?filename=siren-116218.mp3" type="audio/mpeg">
+  </audio>
+
+<script>
+/* ========= Helpers ========= */
+const el = id => document.getElementById(id);
+
+function speak(text, lang='id-ID', rate=1, pitch=1){
+  if(!('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang; u.rate = rate; u.pitch = pitch;
+  const voices = speechSynthesis.getVoices();
+  const v = voices.find(x => /id(-|_)?/i.test(x.lang)) || voices[0];
+  if(v) u.voice = v;
+  try{ speechSynthesis.cancel(); }catch(e){}
+  speechSynthesis.speak(u);
+}
+
+function formatPlace(coords){ return `lat ${coords.latitude.toFixed(3)}, lon ${coords.longitude.toFixed(3)}`; }
+
+/* ========= Rain visuals & audio ========= */
+function clearRain(){
+  el('rainCanvas').innerHTML = '';
+  el('notifBox').style.display = 'none';
+  el('rainTimes').textContent = '';
+  // rabbit loses umbrella
+  el('rabbit').classList.remove('with-umbrella');
+  // cat loses umbrella
+  el('cat').classList.remove('with-umbrella');
+  // stop rain sound
+  try{ const rs = el('rainSound'); rs.pause(); rs.currentTime = 0; }catch(e){}
+}
+function makeRain(intensity=70){
+  clearRain();
+  const canvas = el('rainCanvas');
+  for(let i=0;i<intensity;i++){
+    const d = document.createElement('div');
+    d.className = 'drop';
+    const left = Math.random()*100;
+    const dur = 0.7 + Math.random()*1.8;
+    d.style.left = left+'%';
+    d.style.width = (1 + Math.random()*2)+'px';
+    d.style.height = (12 + Math.random()*30)+'vh';
+    d.style.opacity = (0.35 + Math.random()*0.6);
+    d.style.animationDuration = dur+'s';
+    d.style.top = (-Math.random()*40)+'vh';
+    d.style.background = 'linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(255,255,255,0.06))';
+    canvas.appendChild(d);
+  }
+  // show notif box
+  el('notifBox').style.display = 'flex';
+  // rabbit picks up umbrella & cat too
+  el('rabbit').classList.add('with-umbrella');
+  el('cat').classList.add('with-umbrella');
+  // play rain sound
+  try {
+    const rs = el('rainSound');
+    rs.volume = 0.45;
+    rs.play().catch(()=>{/* blocked until interaction */});
+  } catch(e){}
+}
+
+/* ========= Sky visuals ========= */
+function showClearSky(kind='clear'){
+  clearRain();
+  const sky = el('skyObj'); sky.innerHTML = '';
+  if(kind === 'clear'){
+    const sun = document.createElement('div'); sun.className = 'sun float-sun';
+    sky.appendChild(sun);
+  } else {
+    const cloud = document.createElement('div'); cloud.className = 'cloud';
+    cloud.style.width='220px'; cloud.style.height='70px';
+    sky.appendChild(cloud);
+  }
+}
+function showRainVisual(){
+  const sky = el('skyObj'); sky.innerHTML = '';
+  const cloud = document.createElement('div'); cloud.className = 'cloud'; cloud.style.width='260px'; cloud.style.height='80px';
+  sky.appendChild(cloud);
+  el('notifBox').style.display = 'flex';
+  el('notifTitle').textContent = 'Hujan hari ini';
+  el('notifMsg').textContent = 'Awas basah — bawa payung atau jas hujan!';
+}
+
+/* ========= Notifications ========= */
+async function tryNotify(title, body){
+  if(!('Notification' in window)) return;
+  if(Notification.permission === 'granted'){
+    new Notification(title, {body, icon: null});
+  } else if(Notification.permission !== 'denied'){
+    try {
+      const p = await Notification.requestPermission();
+      if(p === 'granted') new Notification(title, {body});
+    } catch(e){}
+  }
+}
+
+/* ========= Open-Meteo fetch ========= */
+async function fetchWeather(lat, lon){
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth()+1).padStart(2,'0');
+  const dd = String(now.getDate()).padStart(2,'0');
+  const start = `${yyyy}-${mm}-${dd}`;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation,precipitation_probability,weathercode&current_weather=true&start_date=${start}&end_date=${start}&timezone=auto`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('Gagal mengambil data cuaca');
+  return res.json();
+}
+
+/* Determine rain and upcoming times */
+function isRainingToday(data){
+  try {
+    const hourly = data.hourly || {};
+    const p = hourly.precipitation || [];
+    const pp = hourly.precipitation_probability || [];
+    for(let i=0;i<p.length;i++){
+      if(p[i] > 0.1) return true;
+      if((pp[i] || 0) >= 40 && (p[i] || 0) > 0) return true;
+    }
+    const cw = data.current_weather;
+    if(cw && cw.weathercode){ const wc = cw.weathercode; if(wc >= 51 && wc <= 99) return true; }
+    return false;
+  } catch(e){ return false; }
+}
+function getUpcomingRainTimes(data, threshold=40, maxEntries=4){
+  try{
+    const hourly = data.hourly || {};
+    const times = hourly.time || [];
+    const pp = hourly.precipitation_probability || [];
+    const now = new Date();
+    const upcoming = [];
+    for(let i=0;i<times.length;i++){
+      const t = new Date(times[i]);
+      if(t <= now) continue;
+      const prob = pp[i] ?? 0;
+      if(prob >= threshold){
+        upcoming.push({time: t, prob: Math.round(prob)});
+        if(upcoming.length >= maxEntries) break;
+      }
+    }
+    return upcoming;
+  } catch(e){ return []; }
+}
+
+/* ========= UI & Weather handler ========= */
+function setStatus(main, sub, tempStr='', placeStr=''){
+  el('mainStatus').textContent = main;
+  el('subStatus').textContent = sub;
+  el('tempBadge').textContent = tempStr;
+  el('placeLabel').textContent = placeStr;
+}
+
+async function handlePosition(position){
+  const coords = position.coords;
+  setStatus('Mendeteksi cuaca...', 'Memeriksa data cuaca untuk posisimu...', '', formatPlace(coords));
+  try {
+    const data = await fetchWeather(coords.latitude, coords.longitude);
+    const cw = data.current_weather;
+    const tempStr = cw ? `${cw.temperature.toFixed(1)} °C • wind ${cw.windspeed} km/h` : '';
+    const raining = isRainingToday(data);
+    const upcoming = getUpcomingRainTimes(data, 40, 6);
+
+    if(raining){
+      setStatus('Hujan hari ini', 'Sistem mendeteksi kemungkinan hujan — hati-hati!', tempStr, formatPlace(coords));
+      showRainVisual();
+      makeRain(90);
+      el('notifTitle').textContent = 'Hujan terdeteksi';
+      el('notifMsg').textContent = `Suhu ${cw ? cw.temperature.toFixed(1) : '?'} °C — bawa payung!`;
+      tryNotify('Hujan hari ini', `Suhu ${cw ? cw.temperature.toFixed(1) : '?'} °C — bawa payung!`);
+      // rabbit keeps jumping but now with umbrella; cat shows umbrella
+      el('rabbit').classList.add('with-umbrella');
+      el('cat').classList.add('with-umbrella');
+
+      if(upcoming.length){
+        const friendly = upcoming.map(u => {
+          const hh = String(u.time.getHours()).padStart(2,'0');
+          const mm = String(u.time.getMinutes()).padStart(2,'0');
+          return `${hh}:${mm} (${u.prob}%)`;
+        }).join(' • ');
+        el('rainTimes').textContent = 'Diperkirakan hujan pada: ' + friendly;
+        const speakParts = upcoming.slice(0,3).map(u => {
+          const hh = String(u.time.getHours()).padStart(2,'0');
+          const mm = String(u.time.getMinutes()).padStart(2,'0');
+          return `${hh} lewat ${mm} dengan kemungkinan ${u.prob} persen`;
+        });
+        const speechText = 'Peringatan. Kemungkinan hujan pada jam ' + speakParts.join(', ');
+        speak(speechText, 'id-ID', 1, 1);
+      } else {
+        el('rainTimes').textContent = 'Ada kemungkinan hujan hari ini (waktu tidak spesifik).';
+        speak('Peringatan, kemungkinan hujan hari ini. Jangan lupa bawa payung.', 'id-ID', 1, 1);
+      }
+    } else {
+      setStatus('Cerah / Tidak hujan', 'Hari ini diperkirakan tidak hujan.', tempStr, formatPlace(coords));
+      showClearSky('clear');
+      tryNotify('Cuaca: Tidak hujan', `Suhu ${cw ? cw.temperature.toFixed(1) : '?'} °C — selamat beraktivitas!`);
+      el('rabbit').classList.remove('with-umbrella');
+      el('cat').classList.remove('with-umbrella');
+      el('rainTimes').textContent = 'Tidak ada prakiraan hujan hari ini.';
+      speak('Cuaca cerah hari ini. Selamat beraktivitas!', 'id-ID', 1, 1);
+    }
+  } catch(err){
+    console.error(err);
+    setStatus('Gagal memeriksa cuaca', 'Terjadi masalah saat mengambil data cuaca. Coba lagi nanti.', '', formatPlace(coords||{latitude:0,longitude:0}));
+    speak('Gagal memeriksa cuaca. Mohon coba lagi.', 'id-ID', 1, 1);
+  }
+}
+
+/* ========= Geo error ========= */
+function handleGeoError(err){
+  console.warn('geo err', err);
+  if(err && err.code === 1){
+    el('modal').style.display = 'flex';
+    setStatus('Izin lokasi ditolak', 'Akses lokasi dibutuhkan untuk memeriksa cuaca. Buka pengaturan lokasi browser/perangkat.', '', '');
+    speak('Izin lokasi ditolak. Lakukan pengaturan lokasi dan coba lagi.', 'id-ID', 1, 1);
+  } else {
+    setStatus('Tidak dapat mendeteksi lokasi', 'Periksa koneksi atau pengaturan perangkat.', '', '');
+    speak('Tidak dapat mendeteksi lokasi. Periksa koneksi atau pengaturan.', 'id-ID', 1, 1);
+  }
+}
+
+/* ========= Buttons wiring ========= */
+el('btnCheck').addEventListener('click', async ()=>{
+  if(!('geolocation' in navigator)){
+    setStatus('Browser tidak mendukung Geolocation', 'Gunakan browser modern atau perangkat lain.', '', '');
+    return;
+  }
+  setStatus('Mencari lokasi...', 'Browser akan meminta izin lokasi. Jika sudah, tunggu sampai data dimuat.', '', '');
+  navigator.geolocation.getCurrentPosition(handlePosition, handleGeoError, {enableHighAccuracy:true, timeout:15000});
+});
+el('closeModal').addEventListener('click', ()=> el('modal').style.display='none');
+el('btnNotif').addEventListener('click', async ()=>{
+  if(!('Notification' in window)){ alert('Notifikasi tidak didukung di browser ini.'); return; }
+  if(Notification.permission === 'granted'){ alert('Notifikasi sudah diizinkan.'); } 
+  else {
+    try {
+      const perm = await Notification.requestPermission();
+      if(perm === 'granted'){ alert('Notifikasi diizinkan. Anda akan menerima pemberitahuan ketika hujan atau gempa terdeteksi.'); } 
+      else alert('Notifikasi tidak diizinkan.');
+    } catch(e){ alert('Permintaan izin notifikasi gagal.'); }
+  }
+});
+
+/* initial sky */
+showClearSky('clear');
+
+/* try auto geo if permission already granted */
+(async function tryAutoGeo(){
+  try {
+    if(navigator.permissions){
+      const p = await navigator.permissions.query({name:'geolocation'});
+      if(p.state === 'granted'){
+        navigator.geolocation.getCurrentPosition(handlePosition, handleGeoError, {enableHighAccuracy:true, timeout:15000});
+      }
+    }
+  } catch(e){}
+})();
+
+/* ensure TTS voices loaded */
+speechSynthesis.onvoiceschanged = function(){ /* no-op */ };
+
+/* ========= BMKG gempa polling ========= */
+let lastBmkgId = null;
+const BMKG_POLL_INTERVAL = 60_000; // 60s
+const BMKG_MAG_THRESHOLD = 5.0;
+
+async function checkGempaBMKG(){
+  try {
+    const res = await fetch('https://data.bmkg.go.id/DataMKG/TEWS/autogempa.json', {cache: "no-store"});
+    if(!res.ok) throw new Error('BMKG fetch failed');
+    const obj = await res.json();
+    const g = obj.Infogempa.gempa;
+    const mag = parseFloat(g.Magnitude);
+    const id = `${g.Tanggal}_${g.Jam}_${g.Magnitude}_${g.Wilayah}`;
+    if(id !== lastBmkgId){
+      lastBmkgId = id;
+      if(mag >= BMKG_MAG_THRESHOLD){
+        const lokasi = g.Wilayah || '';
+        const waktu = `${g.Tanggal} ${g.Jam}`;
+        const kedalaman = g.Kedalaman || '';
+        const pesan = `Gempa BMKG: Magnitudo ${mag} di ${lokasi} pada ${waktu}. Kedalaman ${kedalaman}.`;
+        triggerBmkgQuake(pesan, mag, lokasi, waktu);
+      } else {
+        console.log('BMKG minor quake', mag);
+      }
+    }
+  } catch(e){
+    console.warn('checkGempaBMKG error', e);
+  }
+}
+setInterval(checkGempaBMKG, BMKG_POLL_INTERVAL);
+checkGempaBMKG();
+
+/* ========= Quake trigger sequence ========= */
+function triggerBmkgQuake(message, magnitude, lokasi, waktu){
+  const visual = el('visual');
+  const overlay = el('quakeOverlay');
+  visual.classList.add('shake');
+  overlay.classList.add('show');
+  overlay.setAttribute('aria-hidden','false');
+  el('quakeMsg').textContent = message;
+
+  // rabbit/cat reaction
+  const rabbitEl = el('rabbit');
+  const catEl = el('cat');
+  rabbitEl.classList.remove('jumping'); // stop jumping while quake
+  rabbitEl.classList.add('stand');
+  catEl.classList.add('stand');
+
+  // show inline notif, TTS, notification
+  tryNotify('Peringatan Gempa (BMKG)', `${magnitude} - ${lokasi} @ ${waktu}`);
+  speak(message, 'id-ID', 1, 1.05);
+
+  // quake sound
+  try {
+    const qs = el('quakeSound');
+    qs.currentTime = 0;
+    qs.play().catch(()=>{/* blocked until interaction */});
+  } catch(e){}
+
+  // vibrate pattern
+  tryVibratePattern([250,150,250]);
+
+  // short urgent beep via WebAudio
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = 700;
+    g.gain.value = 0.0001;
+    o.connect(g); g.connect(ctx.destination);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.06, ctx.currentTime + 0.02);
+    setTimeout(()=> {
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.7);
+      setTimeout(()=> { o.stop(); ctx.close(); }, 800);
+    }, 150);
+  } catch(e){}
+
+  // end sequence
+  setTimeout(()=> {
+    visual.classList.remove('shake');
+    overlay.classList.remove('show');
+    overlay.setAttribute('aria-hidden','true');
+    // resume rabbit jumping
+    rabbitEl.classList.remove('stand'); rabbitEl.classList.add('jumping');
+    catEl.classList.remove('stand');
+  }, 7000);
+}
+
+/* ========= Vibrate helper ========= */
+function tryVibratePattern(pattern){
+  const overlay = el('quakeOverlay');
+  const msgEl = document.createElement('div');
+  msgEl.style.fontSize = '0.9rem';
+  msgEl.style.marginTop = '6px';
+  try {
+    if('vibrate' in navigator){
+      const ok = navigator.vibrate(pattern);
+      msgEl.textContent = ok ? 'Ponsel diminta bergetar.' : 'Permintaan getar dikirim (mungkin diblokir).';
+    } else {
+      msgEl.textContent = 'Perangkat tidak mendukung getar (navigator.vibrate tidak tersedia).';
+    }
+  } catch(e){
+    msgEl.textContent = 'Gagal mencoba getar: ' + (e.message || e);
+  }
+  const existing = overlay.querySelector('.vib-msg');
+  if(existing) existing.remove();
+  msgEl.className = 'vib-msg';
+  overlay.appendChild(msgEl);
+  setTimeout(()=> { if(msgEl && msgEl.parentNode) msgEl.parentNode.removeChild(msgEl); }, 6000);
+}
+
+/* ========= Simulate quake button ========= */
+el('btnSimulate').addEventListener('click', ()=> {
+  const nowStr = new Date().toLocaleString();
+  const simMsg = `Simulasi gempa: Magnitudo 6.0 di Lokasi Simulasi pada ${nowStr}.`;
+  triggerBmkgQuake(simMsg, 6.0, 'Lokasi Simulasi', nowStr);
+});
+
+/* overlay button handlers */
+el('btnVibrateTry').addEventListener('click', ()=> { tryVibratePattern([300,150,300]); });
+el('btnCloseWarn').addEventListener('click', ()=> {
+  const overlay = el('quakeOverlay'), visual = el('visual');
+  overlay.classList.remove('show'); overlay.setAttribute('aria-hidden','true');
+  visual.classList.remove('shake');
+});
+
+/* keyboard shortcut (Shift+G) */
+window.addEventListener('keydown', (e)=>{
+  if(e.shiftKey && (e.key.toLowerCase() === 'g')){
+    const nowStr = new Date().toLocaleString();
+    const simMsg = `Simulasi gempa: Magnitudo 6.0 di Lokasi Simulasi pada ${nowStr}.`;
+    triggerBmkgQuake(simMsg, 6.0, 'Lokasi Simulasi', nowStr);
+  }
+});
+
+/* clean-up on load */
+window.addEventListener('load', ()=> {
+  // allow voices to populate
+  speechSynthesis.onvoiceschanged = function(){};
+});
+
+/* End script */
+</script>
+</body>
+</html>
